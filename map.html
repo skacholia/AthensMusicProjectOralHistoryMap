@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Athens Music Map</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mapbox-gl/2.15.0/mapbox-gl.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/mapbox-gl/2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Source+Sans+Pro:wght@400;600&display=swap');
+    
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Source Sans Pro', sans-serif;
+      color: #333;
+    }
+    
+    #map {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 100%;
+      height: 100vh;
+    }
+    
+    .overlay-container {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 10;
+      width: 400px;
+      background-color: rgba(255, 255, 255, 0.95);
+      border-radius: 8px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+      padding: 20px;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+      transition: width 0.3s ease;
+    }
+    
+    .overlay-container.collapsed {
+      width: 400px;
+    }
+    
+    h1, h2, h3 {
+      font-family: 'Playfair Display', serif;
+      color: #1d3c5a;
+      margin-top: 0;
+    }
+    
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 0;
+      padding-bottom: 10px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    h2 {
+      font-size: 1.4rem;
+      margin-top: 20px;
+      margin-bottom: 10px;
+    }
+    
+    p {
+      line-height: 1.5;
+      margin-bottom: 15px;
+      font-size: 0.95rem;
+    }
+    
+    ul {
+      padding-left: 20px;
+      margin-bottom: 15px;
+    }
+    
+    li {
+      margin-bottom: 5px;
+      font-size: 0.95rem;
+    }
+    
+    .header-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #ddd;
+      margin-bottom: 15px;
+      padding-bottom: 5px;
+    }
+    
+    .toggle-info {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 0;
+      margin-left: 10px;
+    }
+    
+    .triangle {
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 10px solid #1d3c5a;
+      transition: transform 0.3s;
+    }
+    
+    .triangle.collapsed {
+      transform: rotate(-90deg);
+    }
+    
+    .mapboxgl-ctrl-logo {
+      margin-right: 10px !important;
+    }
+    
+    .reference {
+      font-style: italic;
+      font-size: 0.85rem;
+      margin-top: 20px;
+      border-top: 1px solid #ddd;
+      padding-top: 10px;
+    }
+    
+    a {
+      color: #2e5d8a;
+      text-decoration: none;
+    }
+    
+    a:hover {
+      text-decoration: underline;
+    }
+    
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  
+  <div class="overlay-container" id="infoPanel">
+    <div class="header-container">
+      <h1>Athens Music History Map</h1>
+      <button class="toggle-info" id="toggleInfo">
+        <span class="triangle" id="toggleTriangle"></span>
+      </button>
+    </div>
+    <p><strong>A data-driven exploration of Athens' musical heritage using AI analysis of oral histories</strong></p>
+    
+    <h2>About This Project</h2>
+    <p>This interactive map uses Gemini-2.0-Flash AI to extract significant musical locations from the Athens Music Project Oral History Collection interviews. By analyzing these firsthand accounts, we create a spatial representation of Athens' rich musical history.</p>
+    
+    <h2>How It Works</h2>
+    <ul>
+      <li>AI analyzes interview transcripts to identify key locations mentioned by musicians, producers, and scene participants</li>
+      <li>These locations are geocoded and placed on this interactive map</li>
+      <li>Each point represents a venue, studio, or other significant site in Athens' musical development</li>
+    </ul>
+    
+    <h2>Source Material</h2>
+    <p>The Athens Music Project Oral History Collection documents Athens' diverse musical communities, including the Southern indie rock scene, African-American traditions, hip-hop, jazz, bluegrass, folk music, Latin music, new music, classical music, and AthFest development.</p>
+    
+    <p class="reference">Inspired by the <a href="https://www.athenswelcomecenter.com/selfguided-tours-of-athens/music-history" target="_blank">Self-Guided Music History Tour of Athens</a>.</p>
+  </div>
+  
+  <script>
+    // Set your Mapbox token here
+    mapboxgl.accessToken = 'pk.eyJ1Ijoic2thY2hvbGlhIiwiYSI6ImNranZ2dDIwNjAyMDIydG1oOHJtbTUxbG4ifQ.AgLMsEoV6WcXewWOm1w4jA';
+    
+    // Initialize the map
+    const map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/light-v10',
+      center: [-83.3776, 33.9560], // Athens, GA coordinates
+      zoom: 14,
+      pitch: 45, // Give it a 3D-like view
+      bearing: -17.6 // Slight rotation
+    });
+    
+    // Add navigation and fullscreen controls
+    map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    map.addControl(new mapboxgl.FullscreenControl(), 'top-right');
+    
+    // Toggle info panel content
+    const infoPanel = document.getElementById('infoPanel');
+    const toggleButton = document.getElementById('toggleInfo');
+    const toggleTriangle = document.getElementById('toggleTriangle');
+    const contentDivs = Array.from(infoPanel.children).filter(el => !el.classList.contains('header-container'));
+    let isCollapsed = false;
+    
+    toggleButton.addEventListener('click', () => {
+      isCollapsed = !isCollapsed;
+      contentDivs.forEach(el => el.style.display = isCollapsed ? 'none' : '');
+      toggleTriangle.classList.toggle('collapsed', isCollapsed);
+      infoPanel.classList.toggle('collapsed', isCollapsed);
+    });
+    
+    // Add 3D buildings once the map is loaded
+    map.on('load', () => {
+      // Add 3D building layer
+      map.addLayer({
+        'id': '3d-buildings',
+        'source': 'composite',
+        'source-layer': 'building',
+        'filter': ['==', 'extrude', 'true'],
+        'type': 'fill-extrusion',
+        'minzoom': 14,
+        'paint': {
+          'fill-extrusion-color': '#aaa',
+          'fill-extrusion-height': [
+            'interpolate', ['linear'], ['zoom'],
+            14, 0,
+            16, ['get', 'height']
+          ],
+          'fill-extrusion-base': [
+            'interpolate', ['linear'], ['zoom'],
+            14, 0,
+            16, ['get', 'min_height']
+          ],
+          'fill-extrusion-opacity': 0.6
+        }
+      });
+      
+      // Add a placeholder marker for downtown Athens
+      map.addSource('downtown', {
+        'type': 'geojson',
+        'data': {
+          'type': 'FeatureCollection',
+          'features': [
+            {
+              'type': 'Feature',
+              'properties': {
+                'description': 'Downtown Athens',
+                'icon': 'marker'
+              },
+              'geometry': {
+                'type': 'Point',
+                'coordinates': [-83.3776, 33.9560]
+              }
+            }
+          ]
+        }
+      });
+      
+      map.addLayer({
+        'id': 'downtown-marker',
+        'type': 'circle',
+        'source': 'downtown',
+        'paint': {
+          'circle-radius': 8,
+          'circle-color': '#3887be',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': 'white'
+        }
+      });
+      
+      // Popup for downtown marker
+      map.on('click', 'downtown-marker', (e) => {
+        const coordinates = e.features[0].geometry.coordinates.slice();
+        const description = e.features[0].properties.description;
+        new mapboxgl.Popup()
+          .setLngLat(coordinates)
+          .setHTML(`<strong>${description}</strong><br>Ready for AI-extracted music locations`)
+          .addTo(map);
+      });
+      
+      map.on('mouseenter', 'downtown-marker', () => {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+      
+      map.on('mouseleave', 'downtown-marker', () => {
+        map.getCanvas().style.cursor = '';
+      });
+      
+      // *** Load and display AI-extracted locations ***
+      // Assumes "athens_locations.json" is available in the same directory.
+      fetch('athens_locations.json')
+        .then(response => response.json())
+        .then(data => {
+          // Group interviews by coordinates (rounded to 5 decimal places) and record venue title if available.
+          const groups = {};
+          data.forEach(item => {
+            const lat = parseFloat(item.latitude).toFixed(5);
+            const lon = parseFloat(item.longitude).toFixed(5);
+            const key = `${lat},${lon}`;
+            if (!groups[key]) {
+              groups[key] = {
+                latitude: parseFloat(item.latitude),
+                longitude: parseFloat(item.longitude),
+                interviews: [],
+                // Assume each item may have a "venue" field; use the first one encountered.
+                location: item.location || ''
+              };
+            }
+            groups[key].interviews.push({
+              title: item.title,
+              description: item.description,
+              link: item.link // Ensure your JSON includes a "link" field.
+            });
+          });
+          
+          // Create a marker for each group and bind a popup with slider (if multiple) and venue title.
+          Object.values(groups).forEach(group => {
+            // Create a unique ID for this popup container.
+            const popupId = `popup-${group.latitude.toFixed(5)}-${group.longitude.toFixed(5)}`;
+            let popupHTML = `<div id="${popupId}" class="popup-slider" style="font-family: Arial, sans-serif; max-width:500px;">`;
+            // Add venue title if available
+            if (group.location) {
+              popupHTML += `<h2 style="margin:0 0 10px;">${group.location}</h2>`;
+            }
+            if (group.interviews.length > 1) {
+              // Build slider container for multiple interviews without extra horizontal padding
+              popupHTML += `<div class="slider-container" style="position: relative; overflow: hidden;">`;
+              popupHTML += `<div class="slides" style="display: flex; transition: transform 0.3s ease;">`;
+              group.interviews.forEach(interview => {
+                popupHTML += `<div class="slide" style="min-width: 100%; box-sizing: border-box; padding: 0 10px;">`;
+                popupHTML += `<h3 style="margin:0 0 5px; font-family: Arial, sans-serif;">${interview.title}</h3>`;
+                popupHTML += `<p style="margin:0 0 10px;">${interview.description}</p>`;
+                popupHTML += `<p style="margin:0 0 15px;"><a href="${interview.link}" target="_blank">View Interview</a></p>`;
+                popupHTML += `</div>`;
+              });
+              popupHTML += `</div>`; // End slides
+              // Add navigation arrows
+              popupHTML += `<button class="prev" style="position: absolute; top: 50%; left: 5px; transform: translateY(-50%); background: rgba(255,255,255,0.8); border: none; cursor: pointer;">&#9664;</button>`;
+              popupHTML += `<button class="next" style="position: absolute; top: 50%; right: 5px; transform: translateY(-50%); background: rgba(255,255,255,0.8); border: none; cursor: pointer;">&#9654;</button>`;
+              popupHTML += `</div>`;
+            } else {
+              // Only one interview: no slider arrows
+              group.interviews.forEach(interview => {
+                popupHTML += `<div class="slide" style="padding: 0 10px;">`;
+                popupHTML += `<h3 style="margin:0 0 5px; font-family: Arial, sans-serif;">${interview.title}</h3>`;
+                popupHTML += `<p style="margin:0 0 10px;">${interview.description}</p>`;
+                popupHTML += `<p style="margin:0 0 15px;"><a href="${interview.link}" target="_blank">View Interview</a></p>`;
+                popupHTML += `</div>`;
+              });
+            }
+            popupHTML += `</div>`; // End popup container
+            
+            const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(popupHTML);
+            
+            const marker = new mapboxgl.Marker({ color: "#FF5722" })
+              .setLngLat([group.longitude, group.latitude])
+              .setPopup(popup)
+              .addTo(map);
+            
+            // Attach slider event listeners when the marker is clicked (popup opens)
+            marker.getElement().addEventListener('click', () => {
+              // Delay to ensure popup is rendered
+              setTimeout(() => {
+                const container = document.getElementById(popupId);
+                if (container) {
+                  let currentSlide = 0;
+                  const slides = container.querySelector('.slides');
+                  const slideCount = container.querySelectorAll('.slide').length;
+                  const prevBtn = container.querySelector('.prev');
+                  const nextBtn = container.querySelector('.next');
+                  
+                  if (prevBtn && nextBtn && slides) {
+                    // Remove any previous listeners to avoid duplicates
+                    prevBtn.replaceWith(prevBtn.cloneNode(true));
+                    nextBtn.replaceWith(nextBtn.cloneNode(true));
+                    // Re-select after cloning
+                    const newPrevBtn = container.querySelector('.prev');
+                    const newNextBtn = container.querySelector('.next');
+                    
+                    newPrevBtn.addEventListener('click', (e) => {
+                      // Prevent the popup from closing when clicking arrows
+                      e.stopPropagation();
+                      currentSlide = (currentSlide - 1 + slideCount) % slideCount;
+                      slides.style.transform = `translateX(-${currentSlide * 100}%)`;
+                    });
+                    
+                    newNextBtn.addEventListener('click', (e) => {
+                      e.stopPropagation();
+                      currentSlide = (currentSlide + 1) % slideCount;
+                      slides.style.transform = `translateX(-${currentSlide * 100}%)`;
+                    });
+                  }
+                }
+              }, 200);
+            });
+          });
+        })
+        .catch(error => console.error('Error loading location data:', error));
+    });
+  </script>
+</body>
+</html>
